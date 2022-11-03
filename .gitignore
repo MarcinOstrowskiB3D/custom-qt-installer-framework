@@ -92,3 +92,12 @@ doc-build
 /src/sdk/translations/untranslated.ts
 /.vs/custom-qt-installer-framework/v16
 /.vs
+/src/.vs/src/v16
+/src/sdk/uic_wrapper.bat
+/src/sdk/translations/ifw_en.ts
+/src/sdk/qmlimportscanner_wrapper.bat
+/src/sdk/installerbase.qrc
+/src/libs/installer/uic_wrapper.bat
+/src/libs/installer/mocinclude.opt
+/src/libs/7zip/uic_wrapper.bat
+/.qmake.stash
