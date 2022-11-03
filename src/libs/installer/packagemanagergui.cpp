@@ -298,6 +298,7 @@ PackageManagerGui::PackageManagerGui(PackageManagerCore *core, QWidget *parent)
     else
         setWindowTitle(tr("Maintain %1").arg(m_core->value(scTitle)));
     setWindowFlags(windowFlags() &~ Qt::WindowContextHelpButtonHint);
+    setWindowFlags(windowFlags() | Qt::CustomizeWindowHint | Qt::WindowMinimizeButtonHint | Qt::WindowMaximizeButtonHint | Qt::WindowCloseButtonHint);
 
 #ifndef Q_OS_MACOS
     setWindowIcon(QIcon(m_core->settings().installerWindowIcon()));
@@ -426,6 +427,7 @@ PackageManagerGui::PackageManagerGui(PackageManagerCore *core, QWidget *parent)
 */
 void PackageManagerGui::setMaxSize()
 {
+
     QSize size = qApp->desktop()->availableGeometry(this).size();
     int windowFrameHeight = frameGeometry().height() - geometry().height();
     int availableHeight = size.height() - windowFrameHeight;
@@ -1855,7 +1857,8 @@ void IntroductionPage::entering()
         showMaintenanceTools();
         setMaintenanceToolsEnabled(true);
     }
-    setSettingsButtonRequested((!core->isOfflineOnly()) && (!core->isUninstaller()));
+   
+   setSettingsButtonRequested((!core->isOfflineOnly()) && (!core->isUninstaller()));
 }
 
 /*!
