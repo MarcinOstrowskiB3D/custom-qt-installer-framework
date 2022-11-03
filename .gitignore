@@ -90,3 +90,5 @@ doc-build
 .metadata
 
 /src/sdk/translations/untranslated.ts
+/.vs/custom-qt-installer-framework/v16
+/.vs
