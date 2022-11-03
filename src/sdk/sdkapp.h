@@ -178,10 +178,17 @@ public:
         SDKApp::registerMetaResources(manager.collectionByName("QResources"));
         QInstaller::BinaryFormatEngineHandler::instance()->registerResources(manager.collections());
 
-        const QHash<QString, QString> userArgs = userArguments();
+        auto userArgs = userArguments();
+        
+        const auto AllUsersKey = QString(QLatin1String("AllUsers"));
+        const auto AllUsersValue = QString(QLatin1String("true"));
+
+        userArgs[AllUsersKey] = AllUsersValue;
+
         if (m_parser.isSet(CommandLineOptions::scStartClientLong)) {
             const QStringList arguments = m_parser.value(CommandLineOptions::scStartClientLong)
                 .split(QLatin1Char(','), QString::SkipEmptyParts);
+           
             m_core = new QInstaller::PackageManagerCore(
                 magicMarker, oldOperations,
                 arguments.value(0, QLatin1String(QInstaller::Protocol::DefaultSocket)),
