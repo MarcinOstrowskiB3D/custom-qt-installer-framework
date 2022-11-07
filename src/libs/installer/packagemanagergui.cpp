@@ -1715,8 +1715,8 @@ void IntroductionPage::showMaintenanceTools()
 */
 void IntroductionPage::setMaintenanceToolsEnabled(bool enable)
 {
-    m_packageManager->setEnabled(false);
-    m_packageManager->setVisible(false);
+    m_packageManager->setVisible(enable);
+    m_packageManager->setEnabled(enable);
 
     m_updateComponents->setEnabled(enable && ProductKeyCheck::instance()->hasValidKey());
     m_removeAllComponents->setEnabled(enable);
@@ -2685,7 +2685,7 @@ void ReadyForInstallationPage::updatePageListTitle()
     if (core->isInstaller())
         setPageListTitle(tr("Ready to Install"));
     else if (core->isReinstaller())
-        setPageListTitle(tr("Ready to Reinstall"));
+        setPageListTitle(tr("Ready to Repair"));
     else if (core->isMaintainer())
         setPageListTitle(tr("Ready to Update"));
     else if (core->isUninstaller())

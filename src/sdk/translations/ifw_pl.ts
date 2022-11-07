@@ -1430,6 +1430,10 @@ Błąd podczas wczytywania %2</translation>
         <translation>Usuń wszystkie elementy</translation>
     </message>
     <message>
+        <source>&amp;Repair</source>
+        <translation>Napraw</translation>
+    </message>	
+    <message>
         <source>Retrieving information from remote installation sources...</source>
         <translation>Trwa pobieranie informacji ze zdalnych źródeł instalacji...</translation>
     </message>
@@ -2107,6 +2111,10 @@ Please copy the installer to a local drive</source>
         <translation>&amp;Odinstaluj</translation>
     </message>
     <message>
+        <source>Repairing</source>
+        <translation>Naprawianie</translation>
+    </message>	
+    <message>
         <source>Uninstalling %1</source>
         <translation>Odinstalowanie %1</translation>
     </message>
@@ -2181,17 +2189,33 @@ Please copy the installer to a local drive</source>
         <translation>Gotowy do dezinstalacji</translation>
     </message>
     <message>
+        <source>Ready to Repair</source>
+        <translation>Gotowy do naprawiania</translation>
+    </message>	
+    <message>
         <source>Setup is now ready to begin removing %1 from your computer.&lt;br&gt;&lt;font color=&quot;red&quot;&gt;The program directory %2 will be deleted completely&lt;/font&gt;, including all content in that directory!</source>
         <translation>Instalator jest już gotowy, aby rozpocząć usuwanie %1 z komputera.&lt;br&gt;&lt;font color=&quot;red&quot;&gt;Katalog programu %2 zostanie w całości usunięty&lt;/font&gt;, włącznie z całą zawartością!</translation>
     </message>
+    <message>
+        <source>Setup is now ready to begin repairing your installation.</source>
+        <translation>Instalator jest już gotowy, aby naprawić instalację.</translation>
+    </message>	
     <message>
         <source>U&amp;pdate</source>
         <translation>&amp;Aktualizuj</translation>
     </message>
     <message>
+        <source>&amp;Repair</source>
+        <translation>&amp;Napraw</translation>
+    </message>	
+    <message>
         <source>Ready to Update Packages</source>
         <translation>Gotowy do aktualizacji pakietów</translation>
     </message>
+    <message>
+        <source>Ready to Repair Packages</source>
+        <translation>Gotowy do naprawy pakietów</translation>
+    </message>	
     <message>
         <source>Setup is now ready to begin updating your installation.</source>
         <translation>Instalator jest już gotowy do rozpoczęcia aktualizowania instalacji.</translation>
