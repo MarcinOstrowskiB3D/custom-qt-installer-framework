@@ -109,6 +109,7 @@ public:
 
     void clearAllComponentLists();
     void clearUpdaterComponentLists();
+    void clearReinstallerComponentLists();
     QList<Component*> &replacementDependencyComponents();
     QHash<QString, QPair<Component*, Component*> > &componentsToReplace();
 
@@ -123,6 +124,9 @@ public:
 
     bool runUninstaller();
     bool isUninstaller() const;
+
+    bool runReinstaller();
+    bool isReinstaller() const;
 
     bool isUpdater() const;
 
@@ -206,6 +210,10 @@ public:
     QList<QInstaller::Component*> m_updaterComponentsDeps;
     QList<QInstaller::Component*> m_updaterDependencyReplacements;
 
+    QList<QInstaller::Component*> m_reinstallerComponents;
+    QList<QInstaller::Component*> m_reinstallerComponentsDeps;
+    QList<QInstaller::Component*> m_reinstallerDependencyReplacements;
+
     OperationList m_ownedOperations;
     OperationList m_performedOperationsOld;
     OperationList m_performedOperationsCurrentSession;
@@ -273,6 +281,7 @@ private:
     // < name (component to replace), < replacement component, component to replace > >
     QHash<QString, QPair<Component*, Component*> > m_componentsToReplaceAllMode;
     QHash<QString, QPair<Component*, Component*> > m_componentsToReplaceUpdaterMode;
+    QHash<QString, QPair<Component*, Component*> > m_componentsToReplaceReinstallerMode;
 
     InstallerCalculator *m_installerCalculator;
     UninstallerCalculator *m_uninstallerCalculator;
@@ -281,6 +290,7 @@ private:
 
     ComponentModel *m_defaultModel;
     ComponentModel *m_updaterModel;
+    ComponentModel* m_reinstallerModel;
 
     QObject *m_guiObject;
     QScopedPointer<RemoteFileEngineHandler> m_remoteFileEngineHandler;

@@ -44,9 +44,11 @@ public:
     // the marker to distinguish what kind of binary
     static const qint64 MagicInstallerMarker = 0x12023233UL;
     static const qint64 MagicUninstallerMarker = 0x12023234UL;
+    static const qint64 MagicReinstallerMarker = 0x12023237UL;
 
     static const qint64 MagicUpdaterMarker = 0x12023235UL;
     static const qint64 MagicPackageManagerMarker = 0x12023236UL;
+
 
     // additional distinguishers only used at runtime, not written to the binary itself
     enum MagicMarkerSupplement {

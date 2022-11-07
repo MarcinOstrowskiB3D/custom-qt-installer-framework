@@ -1495,6 +1495,12 @@ IntroductionPage::IntroductionPage(PackageManagerCore *core)
     connect(m_removeAllComponents, &QAbstractButton::toggled,
             core, &PackageManagerCore::setCompleteUninstallation);
 
+    m_reinstallComponents = new QRadioButton(tr("&Repair"), this);
+    m_reinstallComponents->setObjectName(QLatin1String("ReinstallerRadioButton"));
+    boxLayout->addWidget(m_reinstallComponents);
+    connect(m_reinstallComponents, &QAbstractButton::toggled,
+        this, &IntroductionPage::setReinstaller);
+
     boxLayout->addItem(new QSpacerItem(1, 1, QSizePolicy::Minimum, QSizePolicy::Expanding));
 
     m_label = new QLabel(this);
@@ -1544,7 +1550,7 @@ IntroductionPage::IntroductionPage(PackageManagerCore *core)
 */
 int IntroductionPage::nextId() const
 {
-    if (packageManagerCore()->isUninstaller())
+    if (packageManagerCore()->isUninstaller() || packageManagerCore()->isReinstaller())
         return PackageManagerCore::ReadyForInstallation;
 
     return PackageManagerPage::nextId();
@@ -1602,6 +1608,22 @@ bool IntroductionPage::validatePage()
         if (m_updatesFetched) {
             if (core->components(QInstaller::PackageManagerCore::ComponentType::Root).count() <= 0)
                 setErrorMessage(QString::fromLatin1("<b>%1</b>").arg(tr("No updates available.")));
+            else
+                setComplete(true);
+        }
+    }
+
+    // fetch reinstaller packages
+    if (core->isReinstaller()) {
+        if (!m_reinstallerFetched) {
+            m_reinstallerFetched = core->fetchRemotePackagesTree();
+            if (!m_reinstallerFetched)
+                setErrorMessage(core->error());
+        }
+
+        if (m_reinstallerFetched) {
+            if (core->components(QInstaller::PackageManagerCore::ComponentType::Root).count() != core->localInstalledPackages().count())
+                setErrorMessage(QString::fromLatin1("<b>%1</b>").arg(tr("Failed get all components from repository")));
             else
                 setComplete(true);
         }
@@ -1693,9 +1715,12 @@ void IntroductionPage::showMaintenanceTools()
 */
 void IntroductionPage::setMaintenanceToolsEnabled(bool enable)
 {
-    m_packageManager->setEnabled(enable);
+    m_packageManager->setEnabled(false);
+    m_packageManager->setVisible(false);
+
     m_updateComponents->setEnabled(enable && ProductKeyCheck::instance()->hasValidKey());
     m_removeAllComponents->setEnabled(enable);
+    m_reinstallComponents->setEnabled(enable);
 }
 
 // -- public slots
@@ -1792,6 +1817,18 @@ void IntroductionPage::setUninstaller(bool value)
     }
 }
 
+void QInstaller::IntroductionPage::setReinstaller(bool value)
+{
+    if (value) {
+        entering();
+        gui()->showSettingsButton(true);
+        packageManagerCore()->setReinstaller();
+        emit packageManagerCoreTypeChanged();
+
+        gui()->updatePageListWidget();
+    }
+}
+
 void IntroductionPage::setPackageManager(bool value)
 {
     if (value) {
@@ -1825,6 +1862,9 @@ void IntroductionPage::initializePage()
             core->setCompleteUninstallation(true);
         }
     }
+    else if (core->isReinstaller()) {
+        m_reinstallComponents->setChecked(true);
+    }
 }
 
 /*!
@@ -1833,6 +1873,7 @@ void IntroductionPage::initializePage()
 */
 void IntroductionPage::onCoreNetworkSettingsChanged()
 {
+    m_reinstallerFetched = false;
     m_updatesFetched = false;
     m_allPackagesFetched = false;
 }
@@ -1882,6 +1923,7 @@ void IntroductionPage::showWidgets(bool show)
     m_packageManager->setVisible(show);
     m_updateComponents->setVisible(show);
     m_removeAllComponents->setVisible(show);
+    m_reinstallComponents->setVisible(show);
 }
 
 /*!
@@ -2113,6 +2155,7 @@ void ComponentSelectionPage::entering()
         QT_TR_NOOP("Please select the components you want to uninstall."),
         QT_TR_NOOP("Select the components to install. Deselect installed components to uninstall them. Any components already installed will not be updated."),
         QT_TR_NOOP("Mandatory components need to be updated first before you can select other components to update.")
+        QT_TR_NOOP("Mandatory components need to be updated first before you can select other components to update.")
      };
 
     int index = 0;
@@ -2121,17 +2164,18 @@ void ComponentSelectionPage::entering()
     if (core->isUninstaller()) index = 2;
     if (core->isPackageManager()) index = 3;
     if (core->foundEssentialUpdate() && core->isUpdater()) index = 4;
+    if (core->foundEssentialUpdate() && core->isReinstaller()) index = 5;
     setColoredSubTitle(tr(strings[index]));
 
     d->updateTreeView();
 
     // check component model state so we can enable needed component selection buttons
-    if (core->isUpdater())
+    if (core->isUpdater() || core->isReinstaller())
         d->onModelStateChanged(d->m_currentModel->checkedState());
 
     setModified(isComplete());
     if (core->settings().repositoryCategories().count() > 0 && !core->isOfflineOnly()
-        && !core->isUpdater()) {
+        && !core->isUpdater() && !core->isReinstaller()) {
         d->showCategoryLayout(true);
         core->settings().setAllowUnstableComponents(true);
     } else {
@@ -2591,6 +2635,11 @@ void ReadyForInstallationPage::entering()
             .absolutePath())));
         setComplete(true);
         return;
+    }
+    else if (packageManagerCore()->isReinstaller()) {
+        setButtonText(QWizard::CommitButton, tr("&Repair"));
+        setColoredTitle(tr("Ready to Repair Packages"));
+        m_msgLabel->setText(tr("Setup is now ready to begin repairing your installation."));
     } else if (packageManagerCore()->isMaintainer()) {
         setButtonText(QWizard::CommitButton, tr("U&pdate"));
         setColoredTitle(tr("Ready to Update Packages"));
@@ -2635,6 +2684,8 @@ void ReadyForInstallationPage::updatePageListTitle()
     PackageManagerCore *core = packageManagerCore();
     if (core->isInstaller())
         setPageListTitle(tr("Ready to Install"));
+    else if (core->isReinstaller())
+        setPageListTitle(tr("Ready to Reinstall"));
     else if (core->isMaintainer())
         setPageListTitle(tr("Ready to Update"));
     else if (core->isUninstaller())
@@ -2755,6 +2806,12 @@ void PerformInstallationPage::entering()
         setColoredTitle(tr("Uninstalling %1").arg(productName()));
 
         QTimer::singleShot(30, packageManagerCore(), SLOT(runUninstaller()));
+    }
+    else if (packageManagerCore()->isReinstaller()) {
+        setButtonText(QWizard::CommitButton, tr("&Reinstall"));
+        setColoredTitle(tr("Repairing components of %1").arg(productName()));
+
+        QTimer::singleShot(30, packageManagerCore(), SLOT(runReinstaller()));
     } else if (packageManagerCore()->isMaintainer()) {
         setButtonText(QWizard::CommitButton, tr("&Update"));
         setColoredTitle(tr("Updating components of %1").arg(productName()));
@@ -2786,6 +2843,8 @@ void PerformInstallationPage::updatePageListTitle()
     PackageManagerCore *core = packageManagerCore();
     if (core->isInstaller())
         setPageListTitle(tr("Installing"));
+    else if (core->isReinstaller())
+        setPageListTitle(tr("Repairing"));
     else if (core->isMaintainer())
         setPageListTitle(tr("Updating"));
     else if (core->isUninstaller())

@@ -65,6 +65,7 @@ ComponentSelectionPagePrivate::ComponentSelectionPagePrivate(ComponentSelectionP
         , m_treeView(new QTreeView(q))
         , m_allModel(m_core->defaultComponentModel())
         , m_updaterModel(m_core->updaterComponentModel())
+        , m_reinstallerModel(m_core->reinstallerComponentModel())
         , m_currentModel(m_allModel)
         , m_allowCompressedRepositoryInstall(false)
         , m_toolBox(nullptr)
@@ -175,6 +176,8 @@ ComponentSelectionPagePrivate::ComponentSelectionPagePrivate(ComponentSelectionP
     connect(m_allModel, SIGNAL(checkStateChanged(QInstaller::ComponentModel::ModelState)), this,
         SLOT(onModelStateChanged(QInstaller::ComponentModel::ModelState)));
     connect(m_updaterModel, SIGNAL(checkStateChanged(QInstaller::ComponentModel::ModelState)),
+        this, SLOT(onModelStateChanged(QInstaller::ComponentModel::ModelState)));
+    connect(m_reinstallerModel, SIGNAL(checkStateChanged(QInstaller::ComponentModel::ModelState)),
         this, SLOT(onModelStateChanged(QInstaller::ComponentModel::ModelState)));
 
     connect(m_core, SIGNAL(metaJobProgress(int)), this, SLOT(onProgressChanged(int)));
@@ -293,6 +296,8 @@ void ComponentSelectionPagePrivate::updateTreeView()
     }
 
     m_currentModel = m_core->isUpdater() ? m_updaterModel : m_allModel;
+    m_currentModel = m_core->isReinstaller() ? m_reinstallerModel : m_allModel;
+
     m_treeView->setModel(m_currentModel);
     m_treeView->setExpanded(m_currentModel->index(0, 0), true);
     foreach (Component *component, m_core->components(PackageManagerCore::ComponentType::All)) {

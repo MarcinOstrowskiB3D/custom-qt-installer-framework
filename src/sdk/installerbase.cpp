@@ -87,6 +87,7 @@ int InstallerBase::run()
     TabController controller(nullptr);
     controller.setManager(m_core);
     controller.setControlScript(controlScript());
+
     if (m_core->isInstaller())
         controller.setGui(new InstallerGui(m_core));
     else

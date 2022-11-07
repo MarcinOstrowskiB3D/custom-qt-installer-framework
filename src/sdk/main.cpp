@@ -58,6 +58,10 @@ static const char PLACEHOLDER[32] = "MY_InstallerCreateDateTime_MY";
 
 int main(int argc, char *argv[])
 {
+    //while (!IsDebuggerPresent()) {
+    //    Sleep(100);
+    //}
+
     if (!qEnvironmentVariableIsSet("QT_AUTO_SCREEN_SCALE_FACTOR")
             && !qEnvironmentVariableIsSet("QT_SCALE_FACTOR")
             && !qEnvironmentVariableIsSet("QT_SCREEN_SCALE_FACTORS")) {

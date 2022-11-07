@@ -1212,7 +1212,7 @@ PackageManagerCore::PackageManagerCore(qint64 magicmaker, const QList<OperationB
 
     // Creates and initializes a remote client, makes us get admin rights for QFile, QSettings
     // and QProcess operations. Init needs to called to set the server side authorization key.
-    if (!d->isUpdater()) {
+    if (!d->isUpdater() && !d->isReinstaller()) {
         RemoteClient::instance().init(socketName, key, mode, Protocol::StartAs::SuperUser);
         RemoteClient::instance().setAuthorizationFallbackDisabled(settings().disableAuthorizationFallback());
     }
@@ -1562,7 +1562,7 @@ bool PackageManagerCore::fetchRemotePackagesTree()
 bool PackageManagerCore::fetchPackagesTree(const PackagesList &packages, const LocalPackagesHash installedPackages) {
 
     bool success = false;
-    if (!isUpdater()) {
+    if (!isUpdater() && !isReinstaller()) {
         success = fetchAllPackages(packages, installedPackages);
         if (d->statusCanceledOrFailed())
             return false;
@@ -1601,8 +1601,11 @@ bool PackageManagerCore::fetchPackagesTree(const PackagesList &packages, const L
                 return false;
             }
         }
-    } else {
+    } else if(isUpdater()) {
         success = fetchUpdaterPackages(packages, installedPackages);
+    }
+    else {
+        success = fetchReinstallerPackages(packages, installedPackages);
     }
 
     updateDisplayVersions(scRemoteDisplayVersion);
@@ -1895,21 +1898,49 @@ QList<Component *> PackageManagerCore::components(ComponentTypes mask, const QSt
     QList<Component *> components;
 
     const bool updater = isUpdater();
-    if (mask.testFlag(ComponentType::Root))
-        components += updater ? d->m_updaterComponents : d->m_rootComponents;
-    if (mask.testFlag(ComponentType::Replacements))
-        components += updater ? d->m_updaterDependencyReplacements : d->m_rootDependencyReplacements;
+    const bool reinstaller = isReinstaller();
 
-    if (!updater) {
-        if (mask.testFlag(ComponentType::Descendants)) {
-            foreach (QInstaller::Component *component, d->m_rootComponents)
-                components += component->descendantComponents();
+    if (mask.testFlag(ComponentType::Root)) {
+        if (updater) {
+            components += d->m_updaterComponents;
         }
-    } else {
+        else if (reinstaller) {
+            components += d->m_reinstallerComponents;
+        }
+        else {
+            components += d->m_rootComponents;
+        }
+    }
+    if (mask.testFlag(ComponentType::Replacements)) {
+        if (updater) {
+            components += d->m_updaterDependencyReplacements;
+        }
+        else if (reinstaller) {
+            components += d->m_reinstallerDependencyReplacements;
+        }
+        else {
+            components += d->m_rootDependencyReplacements;
+        }
+    }
+
+
+    if (updater) {
         if (mask.testFlag(ComponentType::Dependencies))
             components.append(d->m_updaterComponentsDeps);
         // No descendants here, updates are always a flat list and cannot have children!
     }
+    else if (reinstaller) {
+        if (mask.testFlag(ComponentType::Dependencies))
+            components.append(d->m_reinstallerComponentsDeps);
+        // No descendants here, updates are always a flat list and cannot have children!
+    }
+    else {
+        if (mask.testFlag(ComponentType::Descendants)) {
+            foreach (QInstaller::Component *component, d->m_rootComponents)
+                components += component->descendantComponents();
+        }
+    } 
+    
 
     if (!regexp.isEmpty()) {
         QRegularExpression re(regexp);
@@ -1933,6 +1964,13 @@ void PackageManagerCore::appendUpdaterComponent(Component *component)
 {
     component->setUpdateAvailable(true);
     d->m_updaterComponents.append(component);
+    emit componentAdded(component);
+}
+
+void PackageManagerCore::appendReinstallerComponent(Component* component)
+{
+    component->setUpdateAvailable(true);
+    d->m_reinstallerComponents.append(component);
     emit componentAdded(component);
 }
 
@@ -1989,7 +2027,7 @@ QList<Component *> PackageManagerCore::componentsMarkedForInstallation() const
 {
     QList<Component*> markedForInstallation;
     const QList<Component*> relevant = components(ComponentType::Root | ComponentType::Descendants);
-    if (isUpdater()) {
+    if (isUpdater() || isReinstaller()) {
         foreach (Component *component, relevant) {
             if (component->updateRequested())
                 markedForInstallation.append(component);
@@ -2067,7 +2105,7 @@ bool PackageManagerCore::calculateComponents(QString *displayString)
     }
 
     // In case of updater mode we don't uninstall components.
-    if (!isUpdater()) {
+    if (!isUpdater() && !isReinstaller()) {
         QList<Component*> componentsToRemove = componentsToUninstall();
         if (!componentsToRemove.isEmpty()) {
             htmlOutput.append(QString::fromLatin1("<h3>%1</h3><ul>").arg(tr("Components about to "
@@ -2104,7 +2142,7 @@ bool PackageManagerCore::calculateComponents(QString *displayString)
 bool PackageManagerCore::calculateComponentsToUninstall() const
 {
     emit aboutCalculateComponentsToUninstall();
-    if (!isUpdater()) {
+    if (!isUpdater() && !isReinstaller()) {
         // hack to avoid removing needed dependencies
         QSet<Component*>  componentsToInstall = d->installerCalculator()->orderedComponentsToInstall().toSet();
 
@@ -2214,6 +2252,24 @@ ComponentModel *PackageManagerCore::updaterComponentModel() const
         &ComponentModel::setRootComponents);
     return d->m_updaterModel;
 }
+
+/*!
+    Returns the reinstaller component model.
+*/
+ComponentModel* PackageManagerCore::reinstallerComponentModel() const
+{
+    QMutexLocker _(globalModelMutex());
+    if (!d->m_reinstallerModel) {
+        d->m_reinstallerModel = componentModel(const_cast<PackageManagerCore*> (this),
+            QLatin1String("ReinstallerComponentsModel"));
+    }
+    connect(this, &PackageManagerCore::finishReinstallerComponentsReset, d->m_reinstallerModel,
+        &ComponentModel::setRootComponents);
+    return d->m_reinstallerModel;
+}
+
+
+
 
 /*!
     Lists available packages filtered with \a regexp without GUI. Virtual
@@ -2886,6 +2942,11 @@ QStringList PackageManagerCore::allowedRunningProcesses() const
     return d->m_allowedRunningProcesses;
 }
 
+Q_INVOKABLE void QInstaller::PackageManagerCore::forceQuit()
+{
+    exit(EXIT_SUCCESS);
+}
+
 /*!
     Makes sure the installer runs from a local drive. Otherwise the user will get an
     appropriate error message.
@@ -3426,6 +3487,17 @@ bool PackageManagerCore::isUninstaller() const
     return d->isUninstaller();
 }
 
+Q_INVOKABLE void QInstaller::PackageManagerCore::setReinstaller()
+{
+    d->m_magicBinaryMarker = BinaryContent::MagicReinstallerMarker;
+    emit installerBinaryMarkerChanged(d->m_magicBinaryMarker);
+}
+
+Q_INVOKABLE bool QInstaller::PackageManagerCore::isReinstaller() const
+{
+    return d->isReinstaller();
+}
+
 /*!
     \sa {installer::setUpdater}{installer.setUpdater}
     \sa isUpdater(), setUninstaller(), setPackageManager()
@@ -3558,7 +3630,7 @@ bool PackageManagerCore::isCommandLineDefaultInstall() const
 */
 bool PackageManagerCore::isMaintainer() const
 {
-    return isPackageManager() || isUpdater();
+    return isPackageManager() || isUpdater() || isReinstaller();
 }
 
 /*!
@@ -3569,6 +3641,11 @@ bool PackageManagerCore::isMaintainer() const
 bool PackageManagerCore::runInstaller()
 {
     return d->runInstaller();
+}
+
+bool PackageManagerCore::runReinstaller()
+{
+    return d->runReinstaller();
 }
 
 /*!
@@ -3741,7 +3818,7 @@ void PackageManagerCore::storeReplacedComponents(QHash<QString, Component *> &co
                 // If a component replaces another component which is not existing in the
                 // installer binary or the installed component list, just ignore it. This
                 // can happen when in installer mode and probably package manager mode too.
-                if (isUpdater())
+                if (isUpdater() || isReinstaller())
                     qCWarning(QInstaller::lcDeveloperBuild) << componentName << "- Does not exist in the repositories anymore.";
                 continue;
             }
@@ -3829,6 +3906,162 @@ bool PackageManagerCore::fetchAllPackages(const PackagesList &remotes, const Loc
     return true;
 }
 
+bool PackageManagerCore::fetchReinstallerPackages(const PackagesList& remotes, const LocalPackagesHash& locals) {
+    emit startReinstallerComponentsReset();
+
+    d->clearReinstallerComponentLists();
+    QHash<QString, QInstaller::Component*> components;
+
+    Data data;
+    data.components = &components;
+    data.installedPackages = &locals;
+
+    setFoundEssentialUpdate(false);
+    LocalPackagesHash installedPackages = locals;
+    QStringList replaceMes;
+
+    foreach(Package* const update, remotes) {
+        if (d->statusCanceledOrFailed())
+            return false;
+
+        if (!ProductKeyCheck::instance()->isValidPackage(update->data(scName).toString()))
+            continue;
+
+        QScopedPointer<QInstaller::Component> component(new QInstaller::Component(this));
+        data.package = update;
+        component->loadDataFromPackage(*update);
+        if (updateComponentData(data, component.data())) {
+            // Keep a reference so we can resolve dependencies during update.
+            d->m_reinstallerComponentsDeps.append(component.take());
+
+            const QString& name = d->m_reinstallerComponentsDeps.last()->name();
+            const QString replaces = data.package->data(scReplaces).toString();
+            installedPackages.take(name);   // remove from local installed packages
+
+            bool isValidUpdate = locals.contains(name);
+            if (!isValidUpdate && !replaces.isEmpty()) {
+                const QStringList possibleNames = replaces.split(QInstaller::commaRegExp(),
+                    QString::SkipEmptyParts);
+                foreach(const QString & possibleName, possibleNames) {
+                    if (locals.contains(possibleName)) {
+                        isValidUpdate = true;
+                        replaceMes << possibleName;
+                    }
+                }
+            }
+
+            // break if the reinstaller is not valid and if it's not the maintenance tool (we might get an update
+            // for the maintenance tool even if it's not currently installed - possible offline installation)
+            if (!isValidUpdate && (update->data(scEssential, scFalse).toString().toLower() == scFalse))
+                continue;   // Update for not installed package found, skip it.
+
+            const LocalPackage& localPackage = locals.value(name);
+
+            // package must be equal
+            const QDate updateDate = update->data(scReleaseDate).toDate();
+            if (localPackage.lastUpdateDate == updateDate)
+                continue;
+
+            if (update->data(scEssential, scFalse).toString().toLower() == scTrue ||
+                update->data(scForcedUpdate, scFalse).toString().toLower() == scTrue) {
+                setFoundEssentialUpdate(true);
+            }
+
+            // this is not a dependency, it is a real update
+            components.insert(name, d->m_reinstallerComponentsDeps.takeLast());
+        }
+        else {
+            return false;
+        }
+    }
+
+    QHash<QString, QInstaller::Component*> localReplaceMes;
+    foreach(const QString & key, installedPackages.keys()) {
+        QInstaller::Component* component = new QInstaller::Component(this);
+        component->loadDataFromPackage(installedPackages.value(key));
+        d->m_reinstallerComponentsDeps.append(component);
+        // Keep a list of local components that should be replaced
+        if (replaceMes.contains(component->name()))
+            localReplaceMes.insert(component->name(), component);
+    }
+
+    // store all components that got a replacement, but do not modify the components list
+    storeReplacedComponents(localReplaceMes.unite(components), data);
+
+    try {
+        if (!components.isEmpty()) {
+            // append all components w/o parent to the direct list
+            foreach(QInstaller::Component * component, components) {
+                appendReinstallerComponent(component);
+            }
+
+            // after everything is set up, load the scripts
+            foreach(QInstaller::Component * component, components) {
+                if (d->statusCanceledOrFailed())
+                    return false;
+
+                component->loadComponentScript();
+                if (!component->isUnstable())
+                    component->setCheckState(Qt::Checked);
+            }
+
+            // after everything is set up, check installed components
+            foreach(QInstaller::Component * component, d->m_reinstallerComponentsDeps) {
+                if (d->statusCanceledOrFailed())
+                    return false;
+                // even for possible dependency we need to load the script for example to get archives
+                component->loadComponentScript();
+                if (component->isInstalled()) {
+                    // since we do not put them into the model, which would force a update of e.g. tri state
+                    // components, we have to check all installed components ourselves
+                    if (!component->isUnstable())
+                        component->setCheckState(Qt::Checked);
+                }
+            }
+
+            if (foundEssentialUpdate()) {
+                foreach(QInstaller::Component * component, components) {
+                    if (d->statusCanceledOrFailed())
+                        return false;
+
+                    component->setCheckable(false);
+                    component->setSelectable(false);
+                    if ((component->value(scEssential, scFalse).toLower() == scTrue)
+                        || (component->value(scForcedUpdate, scFalse).toLower() == scTrue)) {
+                        // essential updates are enabled, still not checkable but checked
+                        component->setEnabled(true);
+                    }
+                    else {
+                        // non essential updates are disabled, not checkable and unchecked
+                        component->setEnabled(false);
+                        component->setCheckState(Qt::Unchecked);
+                    }
+                }
+            }
+
+            std::sort(d->m_reinstallerComponents.begin(), d->m_reinstallerComponents.end(),
+                Component::SortingPriorityGreaterThan());
+        }
+        else {
+            // we have no updates, no need to store possible dependencies
+            d->clearReinstallerComponentLists();
+        }
+    }
+    catch (const Error& error) {
+        d->clearReinstallerComponentLists();
+        emit finishReinstallerComponentsReset(QList<QInstaller::Component*>());
+        d->setStatus(Failure, error.message());
+
+        // TODO: make sure we remove all message boxes inside the library at some point.
+        MessageBoxHandler::critical(MessageBoxHandler::currentBestSuitParent(), QLatin1String("Error"),
+            tr("Error"), error.message());
+        return false;
+    }
+
+    emit finishReinstallerComponentsReset(d->m_reinstallerComponents);
+    return true;
+}
+
 bool PackageManagerCore::fetchUpdaterPackages(const PackagesList &remotes, const LocalPackagesHash &locals)
 {
     emit startUpdaterComponentsReset();
@@ -3858,9 +4091,9 @@ bool PackageManagerCore::fetchUpdaterPackages(const PackagesList &remotes, const
             // Keep a reference so we can resolve dependencies during update.
             d->m_updaterComponentsDeps.append(component.take());
 
-//            const QString isNew = update->data(scNewComponent).toString();
-//            if (isNew.toLower() != scTrue)
-//                continue;
+            const QString isNew = update->data(scNewComponent).toString();
+            if (isNew.toLower() != scTrue)
+                continue;
 
             const QString &name = d->m_updaterComponentsDeps.last()->name();
             const QString replaces = data.package->data(scReplaces).toString();
@@ -3890,7 +4123,7 @@ bool PackageManagerCore::fetchUpdaterPackages(const PackagesList &remotes, const
             // update date of the package and the release date of the update. This way we can compare and
             // figure out if the update has been installed or not.
             const QDate updateDate = update->data(scReleaseDate).toDate();
-            if (localPackage.lastUpdateDate > updateDate)
+            if (localPackage.lastUpdateDate < updateDate)
                 continue;
 
             if (update->data(scEssential, scFalse).toString().toLower() == scTrue ||

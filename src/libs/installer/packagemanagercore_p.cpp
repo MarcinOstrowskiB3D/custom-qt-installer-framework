@@ -233,6 +233,7 @@ PackageManagerCorePrivate::PackageManagerCorePrivate(PackageManagerCore *core)
     , m_proxyFactory(nullptr)
     , m_defaultModel(nullptr)
     , m_updaterModel(nullptr)
+    , m_reinstallerModel(nullptr)
     , m_guiObject(nullptr)
     , m_remoteFileEngineHandler(nullptr)
     , m_foundEssentialUpdate(false)
@@ -271,6 +272,7 @@ PackageManagerCorePrivate::PackageManagerCorePrivate(PackageManagerCore *core, q
     , m_proxyFactory(nullptr)
     , m_defaultModel(nullptr)
     , m_updaterModel(nullptr)
+    , m_reinstallerModel(nullptr)
     , m_guiObject(nullptr)
     , m_remoteFileEngineHandler(new RemoteFileEngineHandler)
     , m_foundEssentialUpdate(false)
@@ -317,6 +319,7 @@ PackageManagerCorePrivate::~PackageManagerCorePrivate()
 {
     clearAllComponentLists();
     clearUpdaterComponentLists();
+    clearReinstallerComponentLists();
     clearInstallerCalculator();
     clearUninstallerCalculator();
 
@@ -329,6 +332,7 @@ PackageManagerCorePrivate::~PackageManagerCorePrivate()
 
     delete m_defaultModel;
     delete m_updaterModel;
+    delete m_reinstallerModel;
 
     // at the moment the tabcontroller deletes the m_gui, this needs to be changed in the future
     // delete m_gui;
@@ -556,6 +560,31 @@ void PackageManagerCorePrivate::clearUpdaterComponentLists()
     cleanUpComponentEnvironment();
 }
 
+void PackageManagerCorePrivate::clearReinstallerComponentLists()
+{
+    QSet<Component*> usedComponents =
+        QSet<Component*>::fromList(m_reinstallerComponents + m_reinstallerComponentsDeps);
+
+    const QList<QPair<Component*, Component*> > list = m_componentsToReplaceReinstallerMode.values();
+    for (int i = 0; i < list.count(); ++i) {
+        if (usedComponents.contains(list.at(i).second))
+            qCWarning(QInstaller::lcDeveloperBuild) << "a replacement was already in the list - is that correct?";
+        else
+            usedComponents.insert(list.at(i).second);
+    }
+
+    m_reinstallerComponents.clear();
+    m_reinstallerComponentsDeps.clear();
+
+    m_reinstallerDependencyReplacements.clear();
+
+    m_componentsToReplaceReinstallerMode.clear();
+    m_componentsToInstallCalculated = false;
+
+    qDeleteAll(usedComponents);
+    cleanUpComponentEnvironment();
+}
+
 QList<Component *> &PackageManagerCorePrivate::replacementDependencyComponents()
 {
     return (!isUpdater()) ? m_rootDependencyReplacements : m_updaterDependencyReplacements;
@@ -563,6 +592,8 @@ QList<Component *> &PackageManagerCorePrivate::replacementDependencyComponents()
 
 QHash<QString, QPair<Component*, Component*> > &PackageManagerCorePrivate::componentsToReplace()
 {
+    if (isReinstaller()) return m_componentsToReplaceUpdaterMode;
+
     return (!isUpdater()) ? m_componentsToReplaceAllMode : m_componentsToReplaceUpdaterMode;
 }
 
@@ -701,6 +732,11 @@ bool PackageManagerCorePrivate::isInstaller() const
 bool PackageManagerCorePrivate::isUninstaller() const
 {
     return m_magicBinaryMarker == BinaryContent::MagicUninstallerMarker;
+}
+
+bool QInstaller::PackageManagerCorePrivate::isReinstaller() const
+{
+    return m_magicBinaryMarker == BinaryContent::MagicReinstallerMarker;
 }
 
 bool PackageManagerCorePrivate::isUpdater() const
@@ -1777,6 +1813,188 @@ bool PackageManagerCorePrivate::runInstaller()
     return true;
 }
 
+bool PackageManagerCorePrivate::runReinstaller()
+{
+    bool adminRightsGained = false;
+    if (m_completeUninstall) {
+        return runUninstaller();
+    }
+    try {
+        setStatus(PackageManagerCore::Running);
+        emit installationStarted(); //resets also the ProgressCoordninator
+
+        //to have some progress for the cleanup/write component.xml step
+        ProgressCoordinator::instance()->addReservePercentagePoints(1);
+
+        // check if we need admin rights and ask before the action happens
+        if (!directoryWritable(targetDir()))
+            adminRightsGained = m_core->gainAdminRights();
+
+        const QList<Component*> componentsToInstall = m_core->orderedComponentsToInstall();
+        qCDebug(QInstaller::lcInstallerInstallLog) << "Install size:" << componentsToInstall.size()
+            << "components";
+
+        callBeginInstallation(componentsToInstall);
+        stopProcessesForUpdates(componentsToInstall);
+
+        if (m_dependsOnLocalInstallerBinary && !KDUpdater::pathIsOnLocalDevice(qApp->applicationFilePath())) {
+            throw Error(tr("It is not possible to run that operation from a network location"));
+        }
+
+        bool updateAdminRights = false;
+        if (!adminRightsGained) {
+            foreach(Component * component, componentsToInstall) {
+                if (component->value(scRequiresAdminRights, scFalse) == scFalse)
+                    continue;
+
+                updateAdminRights = true;
+                break;
+            }
+        }
+
+        OperationList undoOperations;
+        OperationList nonRevertedOperations;
+        QHash<QString, Component*> componentsByName;
+
+        // order the operations in the right component dependency order
+        // next loop will save the needed operations in reverse order for uninstallation
+        OperationList performedOperationsOld = m_performedOperationsOld;
+        if (m_core->value(QLatin1String("installedOperationAreSorted")) != QLatin1String("true"))
+            performedOperationsOld = sortOperationsBasedOnComponentDependencies(m_performedOperationsOld);
+
+        // build a list of undo operations based on the checked state of the component
+        foreach(Operation * operation, performedOperationsOld) {
+            const QString& name = operation->value(QLatin1String("component")).toString();
+            Component* component = componentsByName.value(name, nullptr);
+            if (!component)
+                component = m_core->componentByName(PackageManagerCore::checkableName(name));
+            if (component)
+                componentsByName.insert(name, component);
+
+            if (isReinstaller()) {
+                // We found the component, the component is not scheduled for update, the dependency solver
+                // did not add the component as install dependency and there is no replacement, keep it.
+                if ((component && !component->updateRequested() && !componentsToInstall.contains(component)
+                    && !m_componentsToReplaceReinstallerMode.contains(name))) {
+                    nonRevertedOperations.append(operation);
+                    continue;
+                }
+
+                // There is a replacement, but the replacement is not scheduled for update, keep it as well.
+                if (m_componentsToReplaceReinstallerMode.contains(name)
+                    && !m_componentsToReplaceReinstallerMode.value(name).first->updateRequested()) {
+                    nonRevertedOperations.append(operation);
+                    continue;
+                }
+            }
+            else if (isPackageManager()) {
+                // We found the component, the component is still checked and the dependency solver did not
+                // add the component as install dependency, keep it.
+                if (component
+                    && component->installAction() == ComponentModelHelper::KeepInstalled
+                    && !componentsToInstall.contains(component)) {
+                    nonRevertedOperations.append(operation);
+                    continue;
+                }
+
+                // There is a replacement, but the replacement is not scheduled for update, keep it as well.
+                if (m_componentsToReplaceReinstallerMode.contains(name)
+                    && !m_componentsToReplaceReinstallerMode.value(name).first->isSelectedForInstallation()) {
+                    nonRevertedOperations.append(operation);
+                    continue;
+                }
+            }
+            else {
+                Q_ASSERT_X(false, Q_FUNC_INFO, "Invalid package manager mode!");
+            }
+
+            // Filter out the create target dir undo operation, it's only needed for full uninstall.
+            // Note: We filter for unnamed operations as well, since old installations had the remove target
+            //  dir operation without the "uninstall-only", which will result in a complete uninstallation
+            //  during an update for the maintenance tool.
+            if (operation->value(QLatin1String("uninstall-only")).toBool()
+                || operation->value(QLatin1String("component")).toString().isEmpty()) {
+                nonRevertedOperations.append(operation);
+                continue;
+            }
+
+            // uninstallation should be in reverse order so prepend it here
+            undoOperations.prepend(operation);
+            updateAdminRights |= operation->value(QLatin1String("admin")).toBool();
+        }
+
+        // we did not request admin rights till we found out that a component/ undo needs admin rights
+        if (updateAdminRights && !adminRightsGained) {
+            m_core->gainAdminRights();
+            m_core->dropAdminRights();
+        }
+
+        double undoOperationProgressSize = 0;
+        const double downloadPartProgressSize = double(2) / double(5);
+        double componentsInstallPartProgressSize = double(3) / double(5);
+        if (undoOperations.count() > 0) {
+            undoOperationProgressSize = double(1) / double(5);
+            componentsInstallPartProgressSize = downloadPartProgressSize;
+            undoOperationProgressSize /= countProgressOperations(undoOperations);
+        }
+
+        ProgressCoordinator::instance()->emitLabelAndDetailTextChanged(tr("Preparing the installation..."));
+
+        // following, we download the needed archives
+        m_core->downloadNeededArchives(downloadPartProgressSize);
+
+        if (undoOperations.count() > 0) {
+            ProgressCoordinator::instance()->emitLabelAndDetailTextChanged(tr("Removing deselected components..."));
+            runUndoOperations(undoOperations, undoOperationProgressSize, adminRightsGained, true);
+        }
+        m_performedOperationsOld = nonRevertedOperations; // these are all operations left: those not reverted
+
+        const double progressOperationCount = countProgressOperations(componentsToInstall);
+        const double progressOperationSize = componentsInstallPartProgressSize / progressOperationCount;
+
+        foreach(Component * component, componentsToInstall)
+            installComponent(component, progressOperationSize, adminRightsGained);
+
+        emit m_core->titleMessageChanged(tr("Creating Maintenance Tool"));
+
+        commitSessionOperations(); //end session, move ops to "old"
+        m_needToWriteMaintenanceTool = true;
+
+        // fake a possible wrong value to show a full progress bar
+        const int progress = ProgressCoordinator::instance()->progressInPercentage();
+        // usually this should be only the reserved one from the beginning
+        if (progress < 100)
+            ProgressCoordinator::instance()->addManualPercentagePoints(100 - progress);
+        ProgressCoordinator::instance()->emitLabelAndDetailTextChanged(tr("\nUpdate finished!"));
+
+        if (adminRightsGained)
+            m_core->dropAdminRights();
+        if (m_foundEssentialUpdate)
+            setStatus(PackageManagerCore::EssentialUpdated);
+        else
+            setStatus(PackageManagerCore::Success);
+        emit installationFinished();
+    }
+    catch (const Error& err) {
+        if (m_core->status() != PackageManagerCore::Canceled) {
+            setStatus(PackageManagerCore::Failure);
+            MessageBoxHandler::critical(MessageBoxHandler::currentBestSuitParent(),
+                QLatin1String("installationError"), tr("Error"), err.message());
+            qCDebug(QInstaller::lcInstallerInstallLog) << "ROLLING BACK operations="
+                << m_performedOperationsCurrentSession.count();
+        }
+
+        m_core->rollBackInstallation();
+
+        ProgressCoordinator::instance()->emitLabelAndDetailTextChanged(tr("\nUpdate aborted!"));
+        if (adminRightsGained)
+            m_core->dropAdminRights();
+        emit installationFinished();
+        return false;
+    }
+    return true;
+}
+
 bool PackageManagerCorePrivate::runPackageUpdater()
 {
     bool adminRightsGained = false;
@@ -2287,6 +2505,8 @@ bool PackageManagerCorePrivate::runningProcessesFound()
 void PackageManagerCorePrivate::setComponentSelection(const QString &id, Qt::CheckState state)
 {
     ComponentModel *model = m_core->isUpdater() ? m_core->updaterComponentModel() : m_core->defaultComponentModel();
+    m_core->isReinstaller() ? m_core->reinstallerComponentModel() : m_core->defaultComponentModel();
+
     Component *component = m_core->componentByName(id);
     if (!component) {
         qCWarning(QInstaller::lcInstallerInstallLog).nospace()

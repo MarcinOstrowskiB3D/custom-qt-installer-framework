@@ -247,6 +247,7 @@ Q_SIGNALS:
 private Q_SLOTS:
     void setUpdater(bool value);
     void setUninstaller(bool value);
+    void setReinstaller(bool value);
     void setPackageManager(bool value);
 
 private:
@@ -262,6 +263,8 @@ private:
     bool m_updatesFetched;
     bool m_allPackagesFetched;
 
+    bool m_reinstallerFetched;
+
     QLabel *m_label;
     QLabel *m_msgLabel;
     QLabel *m_errorLabel;
@@ -269,6 +272,7 @@ private:
     QRadioButton *m_packageManager;
     QRadioButton *m_updateComponents;
     QRadioButton *m_removeAllComponents;
+    QRadioButton* m_reinstallComponents;
 
 #ifdef Q_OS_WIN
     QWinTaskbarButton *m_taskButton;

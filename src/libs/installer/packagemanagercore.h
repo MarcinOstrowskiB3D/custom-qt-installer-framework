@@ -227,6 +227,7 @@ public:
 
     void appendRootComponent(Component *components);
     void appendUpdaterComponent(Component *components);
+    void appendReinstallerComponent(Component* components);
 
     QList<Component *> components(ComponentTypes mask, const QString &regexp = QString()) const;
     Component *componentByName(const QString &identifier) const;
@@ -245,6 +246,8 @@ public:
 
     ComponentModel *defaultComponentModel() const;
     ComponentModel *updaterComponentModel() const;
+    ComponentModel* reinstallerComponentModel() const;
+
     void listInstalledPackages(const QString &regexp = QString());
     void listAvailablePackages(const QString &regexp = QString(),
                                const QHash<QString, QString> &filters = QHash<QString, QString>());
@@ -262,6 +265,9 @@ public:
 
     Q_INVOKABLE void setUninstaller();
     Q_INVOKABLE bool isUninstaller() const;
+
+    Q_INVOKABLE void setReinstaller();
+    Q_INVOKABLE bool isReinstaller() const;
 
     Q_INVOKABLE void setUpdater();
     Q_INVOKABLE bool isUpdater() const;
@@ -301,6 +307,8 @@ public:
     Q_INVOKABLE void setAllowedRunningProcesses(const QStringList &processes);
     Q_INVOKABLE QStringList allowedRunningProcesses() const;
 
+    Q_INVOKABLE void forceQuit();
+
     Settings &settings() const;
 
     Q_INVOKABLE bool addWizardPage(QInstaller::Component *component, const QString &name, int page);
@@ -338,6 +346,7 @@ public:
 
 public Q_SLOTS:
     bool runInstaller();
+    bool runReinstaller();
     bool runUninstaller();
     bool runPackageUpdater();
     bool runOfflineGenerator();
@@ -357,6 +366,7 @@ Q_SIGNALS:
     void componentAdded(QInstaller::Component *comp);
     void rootComponentsAdded(QList<QInstaller::Component*> components);
     void updaterComponentsAdded(QList<QInstaller::Component*> components);
+    void reinstallerComponentsAdded(QList<QInstaller::Component*> components);
     void valueChanged(const QString &key, const QString &value);
     void statusChanged(QInstaller::PackageManagerCore::Status);
     void defaultTranslationsLoadedForLanguage(QLocale::Language);
@@ -372,6 +382,9 @@ Q_SIGNALS:
 
     void startUpdaterComponentsReset();
     void finishUpdaterComponentsReset(const QList<QInstaller::Component*> &componentsWithUpdates);
+
+    void startReinstallerComponentsReset();
+    void finishReinstallerComponentsReset(const QList<QInstaller::Component*>& componentsToReinstalled);
 
     void installationStarted();
     void installationInterrupted();
@@ -412,6 +425,7 @@ private:
     void storeReplacedComponents(QHash<QString, Component*> &components, const struct Data &data);
     bool fetchAllPackages(const PackagesList &remotePackages, const LocalPackagesHash &localPackages);
     bool fetchUpdaterPackages(const PackagesList &remotePackages, const LocalPackagesHash &localPackages);
+    bool fetchReinstallerPackages(const PackagesList& remotePackages, const LocalPackagesHash& localPackages);
 
     void updateDisplayVersions(const QString &displayKey);
     QString findDisplayVersion(const QString &componentName, const QHash<QString, QInstaller::Component*> &components,

@@ -105,6 +105,7 @@ private:
     bool m_categoryLayoutVisible;
     ComponentModel *m_allModel;
     ComponentModel *m_updaterModel;
+    ComponentModel* m_reinstallerModel;
     ComponentModel *m_currentModel;
     QStackedLayout *m_stackedLayout;
 };
