@@ -138,7 +138,7 @@ protected:
     void executeControlScript(int pageId);
 
 private:
-    QScreen* currentScreen() const;
+    QScreen* currentScreen();
 
     class Private;
     Private *const d;

@@ -294,7 +294,7 @@ PackageManagerGui::PackageManagerGui(PackageManagerCore *core, QWidget *parent)
     : QWizard(parent)
     , d(new Private)
     , m_core(core)
-    , m_currentScreen()
+    , m_currentScreen(nullptr)
 {
     setAttribute(Qt::WA_NativeWindow);
 
@@ -430,12 +430,10 @@ PackageManagerGui::PackageManagerGui(PackageManagerCore *core, QWidget *parent)
 }
 
 void PackageManagerGui::screenChanged(QScreen* screen) {
-    if (m_currentScreen) {
-        disconnect(m_currentScreen, &QScreen::logicalDotsPerInchChanged, this, &PackageManagerGui::dpiChanged);
-    }
+    disconnect(currentScreen(), &QScreen::logicalDotsPerInchChanged, this, &PackageManagerGui::dpiChanged);
     
     m_currentScreen = screen;
-    connect(m_currentScreen, &QScreen::logicalDotsPerInchChanged, this, &PackageManagerGui::dpiChanged);
+    connect(currentScreen(), &QScreen::logicalDotsPerInchChanged, this, &PackageManagerGui::dpiChanged);
 
     setMaxSize();
 }
@@ -449,12 +447,14 @@ void PackageManagerGui::dpiChanged(qreal) {
 */
 void PackageManagerGui::setMaxSize()
 {
-    QSize size = m_currentScreen->availableGeometry().size();
+    QSize size = currentScreen()->availableGeometry().size();
+
     int windowFrameHeight = frameGeometry().height() - geometry().height();
     int availableHeight = size.height() - windowFrameHeight;
 
     size.setHeight(availableHeight);
-    setMaximumSize(size);
+
+    setMaximumSize(size * currentScreen()->devicePixelRatio());
 }
 
 /*!
@@ -730,7 +730,7 @@ void PackageManagerGui::executeControlScript(int pageId)
         callControlScriptMethod(p->objectName() + QLatin1String("Callback"));
 }
 
-QScreen* PackageManagerGui::currentScreen() const { 
+QScreen* PackageManagerGui::currentScreen() { 
     if (!m_currentScreen) 
         m_currentScreen = window()->windowHandle()->screen();
     
