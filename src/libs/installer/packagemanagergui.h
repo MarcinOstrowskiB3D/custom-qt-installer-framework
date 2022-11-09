@@ -49,6 +49,7 @@ class QListWidgetItem;
 class QProgressBar;
 class QRadioButton;
 class QTextBrowser;
+class QScreen;
 class QWinTaskbarButton;
 QT_END_NAMESPACE
 
@@ -127,6 +128,8 @@ private Q_SLOTS:
     void customButtonClicked(int which);
     void dependsOnLocalInstallerBinary();
     void currentPageChanged(int newId);
+    void screenChanged(QScreen*);
+    void dpiChanged(qreal);
 
 protected:
     bool event(QEvent *event);
@@ -135,9 +138,12 @@ protected:
     void executeControlScript(int pageId);
 
 private:
+    QScreen* currentScreen() const;
+
     class Private;
     Private *const d;
     PackageManagerCore *m_core;
+    mutable QScreen* m_currentScreen = nullptr;
     QListWidget *m_pageListWidget;
 };
 

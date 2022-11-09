@@ -72,6 +72,8 @@
 #include <QStringListModel>
 #include <QTextBrowser>
 
+#include <QWindow>
+#include <QScreen>
 #include <QVBoxLayout>
 #include <QShowEvent>
 #include <QFileDialog>
@@ -292,7 +294,10 @@ PackageManagerGui::PackageManagerGui(PackageManagerCore *core, QWidget *parent)
     : QWizard(parent)
     , d(new Private)
     , m_core(core)
+    , m_currentScreen()
 {
+    setAttribute(Qt::WA_NativeWindow);
+
     if (m_core->isInstaller())
         setWindowTitle(tr("%1 Setup").arg(m_core->value(scTitle)));
     else
@@ -412,6 +417,8 @@ PackageManagerGui::PackageManagerGui(PackageManagerCore *core, QWidget *parent)
 
     connect(this, &QWizard::customButtonClicked, this, &PackageManagerGui::customButtonClicked);
 
+    connect(window()->windowHandle(), &QWindow::screenChanged, this, &PackageManagerGui::screenChanged);
+
     for (int i = QWizard::BackButton; i < QWizard::CustomButton1; ++i)
         d->m_defaultButtonText.insert(i, buttonText(QWizard::WizardButton(i)));
 
@@ -422,13 +429,27 @@ PackageManagerGui::PackageManagerGui(PackageManagerCore *core, QWidget *parent)
     QTimer::singleShot(30, this, SLOT(setMaxSize()));
 }
 
+void PackageManagerGui::screenChanged(QScreen* screen) {
+    if (m_currentScreen) {
+        disconnect(m_currentScreen, &QScreen::logicalDotsPerInchChanged, this, &PackageManagerGui::dpiChanged);
+    }
+    
+    m_currentScreen = screen;
+    connect(m_currentScreen, &QScreen::logicalDotsPerInchChanged, this, &PackageManagerGui::dpiChanged);
+
+    setMaxSize();
+}
+
+void PackageManagerGui::dpiChanged(qreal) {
+    setMaxSize();
+}
+
 /*!
     Limits installer maximum size to screen size.
 */
 void PackageManagerGui::setMaxSize()
 {
-
-    QSize size = qApp->desktop()->availableGeometry(this).size();
+    QSize size = m_currentScreen->availableGeometry().size();
     int windowFrameHeight = frameGeometry().height() - geometry().height();
     int availableHeight = size.height() - windowFrameHeight;
 
@@ -707,6 +728,13 @@ void PackageManagerGui::executeControlScript(int pageId)
 {
     if (PackageManagerPage *const p = qobject_cast<PackageManagerPage*> (page(pageId)))
         callControlScriptMethod(p->objectName() + QLatin1String("Callback"));
+}
+
+QScreen* PackageManagerGui::currentScreen() const { 
+    if (!m_currentScreen) 
+        m_currentScreen = window()->windowHandle()->screen();
+    
+    return m_currentScreen; 
 }
 
 /*!
