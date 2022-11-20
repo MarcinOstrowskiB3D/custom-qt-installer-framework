@@ -447,14 +447,12 @@ void PackageManagerGui::dpiChanged(qreal) {
 */
 void PackageManagerGui::setMaxSize()
 {
-    QSize size = currentScreen()->availableGeometry().size();
-
+    QSize size = qApp->desktop()->availableGeometry(this).size();
     int windowFrameHeight = frameGeometry().height() - geometry().height();
     int availableHeight = size.height() - windowFrameHeight;
 
     size.setHeight(availableHeight);
-
-    setMaximumSize(size * currentScreen()->devicePixelRatio());
+    setMaximumSize(size);
 }
 
 /*!
