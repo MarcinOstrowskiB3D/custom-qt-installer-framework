@@ -46,6 +46,7 @@
 #include "installercalculator.h"
 #include "uninstallercalculator.h"
 #include "loggingutils.h"
+#include "lib7zarchive.h"
 
 #include <productkeycheck.h>
 
@@ -3133,6 +3134,29 @@ bool PackageManagerCore::performOperation(const QString &name, const QStringList
         return false;
     }
     return true;
+}
+
+bool QInstaller::PackageManagerCore::extract7z(const QString& filePath, const QString& outputDir) {
+    try {
+        QFile file(filePath);
+        if (!file.open(QIODevice::ReadWrite) || !file.exists()) {
+            return false;
+        }
+
+        Lib7z::extractArchive(&file, outputDir);
+        return true;
+    }
+    catch (const std::exception& e) {
+        return false;
+    }
+}
+
+QString QInstaller::PackageManagerCore::getFirstFilePath(const QString& path, const QString& ext) const {
+    QDir dir(path);
+
+    auto list = dir.entryList(QStringList() << ext, QDir::Files);
+
+    return list.size() > 0 ? dir.filePath(list.at(0)) : QString();
 }
 
 /*!

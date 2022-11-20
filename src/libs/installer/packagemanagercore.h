@@ -155,6 +155,9 @@ public:
     Q_INVOKABLE bool operationExists(const QString &name);
     Q_INVOKABLE bool performOperation(const QString &name, const QStringList &arguments);
 
+    Q_INVOKABLE bool extract7z(const QString& filePath, const QString& outputDir);
+    Q_INVOKABLE QString getFirstFilePath(const QString& dir, const QString& ext) const;
+
     Q_INVOKABLE static bool versionMatches(const QString &version, const QString &requirement);
 
     Q_INVOKABLE static QString findLibrary(const QString &name, const QStringList &paths = QStringList());
