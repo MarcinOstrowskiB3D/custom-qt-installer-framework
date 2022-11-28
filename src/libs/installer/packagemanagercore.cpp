@@ -4115,10 +4115,6 @@ bool PackageManagerCore::fetchUpdaterPackages(const PackagesList &remotes, const
             // Keep a reference so we can resolve dependencies during update.
             d->m_updaterComponentsDeps.append(component.take());
 
-            const QString isNew = update->data(scNewComponent).toString();
-            if (isNew.toLower() != scTrue)
-                continue;
-
             const QString &name = d->m_updaterComponentsDeps.last()->name();
             const QString replaces = data.package->data(scReplaces).toString();
             installedPackages.take(name);   // remove from local installed packages
@@ -4147,7 +4143,7 @@ bool PackageManagerCore::fetchUpdaterPackages(const PackagesList &remotes, const
             // update date of the package and the release date of the update. This way we can compare and
             // figure out if the update has been installed or not.
             const QDate updateDate = update->data(scReleaseDate).toDate();
-            if (localPackage.lastUpdateDate < updateDate)
+            if (localPackage.lastUpdateDate > updateDate)
                 continue;
 
             if (update->data(scEssential, scFalse).toString().toLower() == scTrue ||

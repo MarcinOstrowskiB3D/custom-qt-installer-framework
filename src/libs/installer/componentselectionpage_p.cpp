@@ -295,8 +295,15 @@ void ComponentSelectionPagePrivate::updateTreeView()
             this, &ComponentSelectionPagePrivate::currentSelectedChanged);
     }
 
-    m_currentModel = m_core->isUpdater() ? m_updaterModel : m_allModel;
-    m_currentModel = m_core->isReinstaller() ? m_reinstallerModel : m_allModel;
+    if (m_core->isUpdater()) {
+        m_currentModel = m_updaterModel;
+    }
+    else if (m_core->isReinstaller()) {
+        m_currentModel = m_reinstallerModel;
+    }
+    else {
+        m_currentModel = m_allModel;
+    }
 
     m_treeView->setModel(m_currentModel);
     m_treeView->setExpanded(m_currentModel->index(0, 0), true);
